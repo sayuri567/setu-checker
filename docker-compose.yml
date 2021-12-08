@@ -1,0 +1,14 @@
+version: '2'
+networks:
+  default:
+    name: mac-net
+
+services:
+  setu-checker:
+    image: setu-checker:1.0.0
+    container_name: setu-checker
+    environment:
+      ENV_LOG_LEVEL: info
+    volumes:
+      - ./images:/images
+      - ./classify:/classify
