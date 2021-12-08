@@ -50,7 +50,6 @@ func (this *checkImages) Run() {
 					}
 				}
 				if isIgnore {
-					logrus.Infof("pass file: %s", file.Path)
 					return
 				}
 				tp := this.getFileType(file)
@@ -74,6 +73,7 @@ func (this *checkImages) Run() {
 				}
 				resp, err := client.CheckImages(file.Path)
 				if err != nil && !errors.Is(err, baiduaudit.ErrInvalidFileType) {
+					this.moveFile(file, config.Conf.AuditConf.FailDir)
 					logrus.WithError(err).Error("failed to check image")
 					return
 				}
