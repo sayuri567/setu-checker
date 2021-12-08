@@ -33,6 +33,6 @@ func (m *ModuleManager) Init() error {
 
 func (m *ModuleManager) getCron() []*crontab.Crontab {
 	return []*crontab.Crontab{
-		{Spec: "*/5 */1 * * * ?", Cmd: jobs.CheckImages},
+		{Spec: "36 */12 * * * ?", Cmd: jobs.CheckImages},
 	}
 }
