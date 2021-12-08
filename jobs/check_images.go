@@ -6,10 +6,12 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/sayuri567/gorun"
 	"github.com/sayuri567/setu-checker/baiduaudit"
 	"github.com/sayuri567/setu-checker/config"
 	"github.com/sayuri567/tool/util/arrayutil"
@@ -23,6 +25,11 @@ var CheckImages = &checkImages{}
 
 func (this *checkImages) Run() {
 	client := baiduaudit.GetClient(config.Conf.BaseConf.BaiduAk, config.Conf.BaseConf.BaiduSk)
+	regs := []*regexp.Regexp{}
+	for _, ignoreFile := range config.Conf.BaseConf.IgnoreFile {
+		regs = append(regs, regexp.MustCompile(ignoreFile))
+	}
+	runner := gorun.NewGoRun(config.Conf.BaseConf.Worker, time.Minute, true)
 	for _, imagePath := range config.Conf.BaseConf.Paths {
 		files, err := fileutil.GetAllFiles(imagePath)
 		if err != nil {
@@ -30,20 +37,48 @@ func (this *checkImages) Run() {
 			continue
 		}
 		for _, file := range files {
-			tp := this.getFileType(file)
-			if arrayutil.InArrayForString(config.Conf.BaseConf.FileType, strings.ToLower(tp)) == -1 {
-				continue
-			}
-			resp, err := client.CheckImages(file.Path)
-			if err != nil && !errors.Is(err, baiduaudit.ErrInvalidFileType) {
-				logrus.WithError(err).Error("failed to check image")
-				continue
-			}
-			err = this.classify(file, resp)
-			if err != nil {
-				logrus.WithError(err).Error("failed to classify image")
-				continue
-			}
+			runner.Go(func(file *fileutil.File) {
+				isIgnore := false
+				for _, reg := range regs {
+					isIgnore = reg.MatchString(file.Name)
+					if isIgnore {
+						break
+					}
+				}
+				if isIgnore {
+					logrus.Infof("pass file: %s", file.Path)
+					return
+				}
+				tp := this.getFileType(file)
+				// GIF
+				if arrayutil.InArrayForString(config.Conf.BaseConf.GifType, strings.ToLower(tp)) > -1 {
+					if err = this.moveFile(file, config.Conf.AuditConf.Gif); err != nil {
+						logrus.WithError(err).Error("failed to classify gif")
+					}
+					return
+				}
+				// MP4
+				if arrayutil.InArrayForString(config.Conf.BaseConf.VideoType, strings.ToLower(tp)) > -1 {
+					if err = this.moveFile(file, config.Conf.AuditConf.Mp4); err != nil {
+						logrus.WithError(err).Error("failed to classify mp4")
+					}
+					return
+				}
+				// 其他图片
+				if arrayutil.InArrayForString(config.Conf.BaseConf.FileType, strings.ToLower(tp)) == -1 {
+					return
+				}
+				resp, err := client.CheckImages(file.Path)
+				if err != nil && !errors.Is(err, baiduaudit.ErrInvalidFileType) {
+					logrus.WithError(err).Error("failed to check image")
+					return
+				}
+				err = this.classify(file, resp)
+				if err != nil {
+					logrus.WithError(err).Error("failed to classify image")
+					return
+				}
+			}, file)
 		}
 	}
 }

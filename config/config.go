@@ -14,14 +14,20 @@ type Config struct {
 }
 
 type BaseConf struct {
-	Paths    []string `yaml:"paths"`
-	BaiduAk  string   `yaml:"baidu_ak"`
-	BaiduSk  string   `yaml:"baidu_sk"`
-	FileType []string `yaml:"file_type"`
+	Worker     int      `yaml:"worker"`
+	Paths      []string `yaml:"paths"`
+	BaiduAk    string   `yaml:"baidu_ak"`
+	BaiduSk    string   `yaml:"baidu_sk"`
+	FileType   []string `yaml:"file_type"`
+	IgnoreFile []string `yaml:"ignore_file"`
+	VideoType  []string `yaml:"video_type"`
+	GifType    []string `yaml:"gif_type"`
 }
 
 type AuditConf struct {
 	FailDir        string `yaml:"fail_dir"`         // 移动文件失败目录
+	Mp4            string `yaml:"mp4"`              // 通过审核     subType:
+	Gif            string `yaml:"gif"`              // 通过审核     subType:
 	NoCheck        string `yaml:"no_check"`         // 没有检测
 	NoH            string `yaml:"no_h"`             // 通过审核     subType:
 	NormalH        string `yaml:"normal_h"`         // 一般涩情     subType: 0
