@@ -163,20 +163,20 @@ func (this *checkImages) classify(file *fileutil.File, resp *baiduaudit.CheckIma
 				dir = config.Conf.AuditConf.NormalSexyH
 			case 10: // 卡通女性性感
 				dir = config.Conf.AuditConf.AnimeSexyH
-			case 11: // 孕妇
-				dir = config.Conf.AuditConf.PregnantH
-			case 12: // 特殊
+			case 11: // 特殊
 				dir = config.Conf.AuditConf.SpecialH
-			case 13: // 臀部特写
-				dir = config.Conf.AuditConf.HipsH
-			case 14: // 脚部特写
-				dir = config.Conf.AuditConf.FeetH
-			case 15: // 裆部特写
-				dir = config.Conf.AuditConf.CrotchH
-			case 16: // 亲密行为
+			case 12: // 亲密行为
 				dir = config.Conf.AuditConf.IntimateH
-			case 17: // 卡通亲密行为
+			case 13: // 卡通亲密行为
 				dir = config.Conf.AuditConf.AnimeIntimateH
+			case 14: // 孕妇
+				dir = config.Conf.AuditConf.PregnantH
+			case 15: // 臀部特写
+				dir = config.Conf.AuditConf.HipsH
+			case 16: // 脚部特写
+				dir = config.Conf.AuditConf.FeetH
+			case 17: // 裆部特写
+				dir = config.Conf.AuditConf.CrotchH
 			default: // 其他类型
 				dir = config.Conf.AuditConf.FailDir
 			}

@@ -41,13 +41,13 @@ type AuditConf struct {
 	MenBareH       string `yaml:"men_bare_h"`       // 男性裸露		subType: 8
 	NormalSexyH    string `yaml:"normal_sexy_h"`    // 女性性感		subType: 9
 	AnimeSexyH     string `yaml:"anime_sexy_h"`     // 卡通女性性感	 subType: 10
-	PregnantH      string `yaml:"pregnant_h"`       // 孕妇			subType: 11
-	SpecialH       string `yaml:"special_h"`        // 特殊类		subType: 12
-	HipsH          string `yaml:"hips_h"`           // 臀部特写		subType: 13
-	FeetH          string `yaml:"feet_h"`           // 脚部特写		subType: 14
-	CrotchH        string `yaml:"crotch_h"`         // 裆部特写		subType: 15
-	IntimateH      string `yaml:"intimate_h"`       // 亲密行为		subType: 16
-	AnimeIntimateH string `yaml:"anime_intimate_h"` // 卡通亲密行为	 subType: 17
+	SpecialH       string `yaml:"special_h"`        // 特殊类		subType: 11
+	IntimateH      string `yaml:"intimate_h"`       // 亲密行为		subType: 12
+	AnimeIntimateH string `yaml:"anime_intimate_h"` // 卡通亲密行为	 subType: 13
+	PregnantH      string `yaml:"pregnant_h"`       // 孕妇			subType: 14
+	HipsH          string `yaml:"hips_h"`           // 臀部特写		subType: 15
+	FeetH          string `yaml:"feet_h"`           // 脚部特写		subType: 16
+	CrotchH        string `yaml:"crotch_h"`         // 裆部特写		subType: 17
 }
 
 const (
