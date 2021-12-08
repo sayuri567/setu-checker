@@ -6,11 +6,8 @@ import (
 	"errors"
 	"io/ioutil"
 	"net/url"
-	"strings"
 	"time"
 
-	"github.com/sayuri567/setu-checker/config"
-	"github.com/sayuri567/tool/util/arrayutil"
 	"github.com/sayuri567/tool/util/curl"
 	"github.com/sayuri567/tool/util/fileutil"
 	"github.com/sirupsen/logrus"
@@ -21,10 +18,6 @@ const (
 	tokenUtl    = "https://openapi.baidu.com/oauth/2.0/token"
 
 	tokenFile = "./access_token"
-)
-
-var (
-	ErrInvalidFileType = errors.New("invalid filetype")
 )
 
 type Client struct {
@@ -88,11 +81,6 @@ func (l CheckImageDataItemList) Swap(i, j int) {
 }
 
 func (this *Client) CheckImages(filepath string) (*CheckImageResp, error) {
-	tp := filepath[strings.LastIndex(filepath, ".")+1:]
-	if arrayutil.InArrayForString(config.Conf.BaseConf.FileType, tp) == -1 {
-		return nil, ErrInvalidFileType
-	}
-
 	buff, err := ioutil.ReadFile(filepath)
 	if err != nil {
 		return nil, err
@@ -106,10 +94,23 @@ func (this *Client) CheckImages(filepath string) (*CheckImageResp, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := curl.Post(aiImgCensor+"?access_token="+accessToken, params, nil)
 
 	data := &CheckImageResp{}
-	err = json.Unmarshal(resp.Body, data)
+	var resp *curl.HttpResponse
+	for i := 0; i < 3; i++ {
+		if i > 0 {
+			time.Sleep(time.Second * time.Duration(i*3))
+		}
+		resp, err = curl.Post(aiImgCensor+"?access_token="+accessToken, params, nil)
+		if err != nil {
+			continue
+		}
+		err = json.Unmarshal(resp.Body, data)
+		if err == nil {
+			break
+		}
+	}
+
 	if err != nil {
 		return nil, err
 	}

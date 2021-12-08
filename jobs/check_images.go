@@ -73,7 +73,7 @@ func (this *checkImages) Run() {
 					return
 				}
 				resp, err := client.CheckImages(file.Path)
-				if err != nil && !errors.Is(err, baiduaudit.ErrInvalidFileType) {
+				if err != nil {
 					this.moveFile(file, config.Conf.AuditConf.FailDir)
 					logrus.WithError(err).Error("failed to check image")
 					return
