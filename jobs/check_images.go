@@ -34,6 +34,7 @@ func (this *checkImages) Run() {
 		worker = config.Conf.BaseConf.Worker
 	}
 	runner := gorun.NewGoRun(worker, time.Minute*10, true)
+	defer runner.Close()
 	for _, imagePath := range config.Conf.BaseConf.Paths {
 		files, err := fileutil.GetAllFiles(imagePath)
 		if err != nil {
