@@ -29,7 +29,11 @@ func (this *checkImages) Run() {
 	for _, ignoreFile := range config.Conf.BaseConf.IgnoreFile {
 		regs = append(regs, regexp.MustCompile(ignoreFile))
 	}
-	runner := gorun.NewGoRun(config.Conf.BaseConf.Worker, time.Minute, true)
+	worker := 2
+	if config.Conf.BaseConf.Worker > 0 {
+		worker = config.Conf.BaseConf.Worker
+	}
+	runner := gorun.NewGoRun(worker, time.Minute*10, true)
 	for _, imagePath := range config.Conf.BaseConf.Paths {
 		files, err := fileutil.GetAllFiles(imagePath)
 		if err != nil {
