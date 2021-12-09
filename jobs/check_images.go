@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sayuri567/gorun"
@@ -27,6 +28,17 @@ type checkImages struct {
 	workers     *gorun.GoRun
 }
 
+type statisticsData struct {
+	FileCount    int64    `json:"file_count"`
+	IgnoreCount  int64    `json:"ignore_count"`
+	VideoCount   int64    `json:"video_count"`
+	GifCount     int64    `json:"gif_count"`
+	ImageCount   int64    `json:"image_count"`
+	FailCount    int64    `json:"fail_count"`
+	InvalidCount int64    `json:"invalid_count"`
+	InvalidTypes []string `json:"invalid_types"`
+}
+
 var CheckImages = &checkImages{}
 
 func (this *checkImages) Run() {
@@ -36,6 +48,8 @@ func (this *checkImages) Run() {
 		return
 	}
 	wg := &sync.WaitGroup{}
+
+	statisticsMap := map[string]*statisticsData{}
 	for _, imagePath := range config.Conf.BaseConf.Paths {
 		files, err := fileutil.GetAllFiles(imagePath)
 		if err != nil {
@@ -43,11 +57,18 @@ func (this *checkImages) Run() {
 			continue
 		}
 		wg.Add(len(files))
+		statisticsMap[imagePath] = &statisticsData{FileCount: int64(len(files))}
 		for _, file := range files {
-			this.workers.Go(this.doFileClassify, file, wg)
+			this.workers.Go(this.doFileClassify, file, wg, statisticsMap[imagePath])
 		}
 	}
 	wg.Wait()
+
+	for _, item := range statisticsMap {
+		item.InvalidTypes = arrayutil.UniqueString(item.InvalidTypes)
+	}
+
+	logrus.WithField("statistics", statisticsMap).Info("check images statistics")
 }
 
 // 初始化
@@ -106,7 +127,7 @@ func (this *checkImages) moveFile(file *fileutil.File, targetDir string) error {
 	return errors.New("move file fail!!!")
 }
 
-func (this *checkImages) doFileClassify(file *fileutil.File, wg *sync.WaitGroup) {
+func (this *checkImages) doFileClassify(file *fileutil.File, wg *sync.WaitGroup, statistics *statisticsData) {
 	defer wg.Done()
 	isIgnore := false
 	var err error
@@ -122,16 +143,22 @@ func (this *checkImages) doFileClassify(file *fileutil.File, wg *sync.WaitGroup)
 	tp := this.getFileType(file)
 	switch true {
 	case arrayutil.InArrayForString(config.Conf.BaseConf.GifType, strings.ToLower(tp)) > -1:
+		atomic.AddInt64(&statistics.GifCount, 1)
 		err = this.classifyGif(file)
 	case arrayutil.InArrayForString(config.Conf.BaseConf.VideoType, strings.ToLower(tp)) > -1:
+		atomic.AddInt64(&statistics.VideoCount, 1)
 		err = this.classifyVideo(file)
 	case arrayutil.InArrayForString(config.Conf.BaseConf.FileType, strings.ToLower(tp)) > -1:
+		atomic.AddInt64(&statistics.ImageCount, 1)
 		err = this.classifyImg(file)
 	default:
-		err = this.classifyDefault(file)
+		atomic.AddInt64(&statistics.InvalidCount, 1)
+		statistics.InvalidTypes = append(statistics.InvalidTypes, strings.ToLower(tp))
+		// err = this.classifyDefault(file)
 	}
 	if err != nil {
 		logrus.WithError(err).WithFields(logrus.Fields{"file_type": strings.ToLower(tp), "file_path": file.Path}).Error("failed to classify image")
+		atomic.AddInt64(&statistics.FailCount, 1)
 		this.classifyFail(file)
 		return
 	}
