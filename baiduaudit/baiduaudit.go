@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io/ioutil"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/sayuri567/tool/util/curl"
@@ -25,10 +26,12 @@ type Client struct {
 	sk          string
 	accessToken string
 	expireAt    time.Time
+	httpClient  *curl.Client
+	lock        *sync.Mutex
 }
 
 func GetClient(ak, sk string) *Client {
-	return &Client{ak: ak, sk: sk}
+	return &Client{ak: ak, sk: sk, httpClient: curl.NewTimeoutClient(time.Minute, 5*time.Minute, true), lock: &sync.Mutex{}}
 }
 
 type CheckImageResp struct {
@@ -101,7 +104,7 @@ func (this *Client) CheckImages(filepath string) (*CheckImageResp, error) {
 		if i > 0 {
 			time.Sleep(time.Second * time.Duration(i*3))
 		}
-		resp, err = curl.Post(aiImgCensor+"?access_token="+accessToken, params, nil)
+		resp, err = this.httpClient.Post(aiImgCensor+"?access_token="+accessToken, params, nil)
 		if err != nil {
 			continue
 		}
@@ -131,6 +134,8 @@ type AuthResponse struct {
 }
 
 func (this *Client) GetAccessToken() (string, error) {
+	this.lock.Lock()
+	defer this.lock.Unlock()
 	authresponse := new(AuthResponse)
 	if this.accessToken == "" {
 		accessToken, err := fileutil.ReadFile(tokenFile)
@@ -148,7 +153,7 @@ func (this *Client) GetAccessToken() (string, error) {
 		return this.accessToken, nil
 	}
 
-	resp, err := curl.Post(tokenUtl, url.Values{
+	resp, err := this.httpClient.Post(tokenUtl, url.Values{
 		"grant_type":    []string{"client_credentials"},
 		"client_id":     []string{this.ak},
 		"client_secret": []string{this.sk},

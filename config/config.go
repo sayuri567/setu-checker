@@ -48,6 +48,7 @@ type AuditConf struct {
 	HipsH          string `yaml:"hips_h"`           // 臀部特写		subType: 15
 	FeetH          string `yaml:"feet_h"`           // 脚部特写		subType: 16
 	CrotchH        string `yaml:"crotch_h"`         // 裆部特写		subType: 17
+	Other          string `yaml:"other"`            // 获取百度接口未知类型
 }
 
 const (

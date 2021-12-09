@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sayuri567/gorun"
@@ -19,75 +21,58 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type checkImages struct{}
+type checkImages struct {
+	baiduClient *baiduaudit.Client
+	ignoreRegs  []*regexp.Regexp
+	workers     *gorun.GoRun
+}
 
 var CheckImages = &checkImages{}
 
 func (this *checkImages) Run() {
-	client := baiduaudit.GetClient(config.Conf.BaseConf.BaiduAk, config.Conf.BaseConf.BaiduSk)
-	regs := []*regexp.Regexp{}
-	for _, ignoreFile := range config.Conf.BaseConf.IgnoreFile {
-		regs = append(regs, regexp.MustCompile(ignoreFile))
+	err := this.init()
+	if err != nil {
+		logrus.WithError(err).Error("failed to init check images")
+		return
 	}
-	worker := 2
-	if config.Conf.BaseConf.Worker > 0 {
-		worker = config.Conf.BaseConf.Worker
-	}
-	runner := gorun.NewGoRun(worker, time.Minute*10, true)
-	defer runner.Close()
+	wg := &sync.WaitGroup{}
 	for _, imagePath := range config.Conf.BaseConf.Paths {
 		files, err := fileutil.GetAllFiles(imagePath)
 		if err != nil {
 			logrus.WithError(err).Error("failed to get all files")
 			continue
 		}
+		wg.Add(len(files))
 		for _, file := range files {
-			runner.Go(func(file *fileutil.File) {
-				isIgnore := false
-				for _, reg := range regs {
-					isIgnore = reg.MatchString(file.Name)
-					if isIgnore {
-						break
-					}
-				}
-				if isIgnore {
-					return
-				}
-				tp := this.getFileType(file)
-				// GIF
-				if arrayutil.InArrayForString(config.Conf.BaseConf.GifType, strings.ToLower(tp)) > -1 {
-					if err = this.moveFile(file, config.Conf.AuditConf.Gif); err != nil {
-						logrus.WithError(err).Error("failed to classify gif")
-					}
-					return
-				}
-				// MP4
-				if arrayutil.InArrayForString(config.Conf.BaseConf.VideoType, strings.ToLower(tp)) > -1 {
-					if err = this.moveFile(file, config.Conf.AuditConf.Mp4); err != nil {
-						logrus.WithError(err).Error("failed to classify mp4")
-					}
-					return
-				}
-				// 其他图片
-				if arrayutil.InArrayForString(config.Conf.BaseConf.FileType, strings.ToLower(tp)) == -1 {
-					return
-				}
-				resp, err := client.CheckImages(file.Path)
-				if err != nil {
-					this.moveFile(file, config.Conf.AuditConf.FailDir)
-					logrus.WithError(err).Error("failed to check image")
-					return
-				}
-				err = this.classify(file, resp)
-				if err != nil {
-					logrus.WithError(err).Error("failed to classify image")
-					return
-				}
-			}, file)
+			this.workers.Go(this.doFileClassify, file, wg)
 		}
 	}
+	wg.Wait()
 }
 
+// 初始化
+func (this *checkImages) init() error {
+	if this.baiduClient == nil {
+		this.baiduClient = baiduaudit.GetClient(config.Conf.BaseConf.BaiduAk, config.Conf.BaseConf.BaiduSk)
+	}
+	if len(this.ignoreRegs) == 0 && len(config.Conf.BaseConf.IgnoreFile) > 0 {
+		this.ignoreRegs = []*regexp.Regexp{}
+		for _, ignoreFile := range config.Conf.BaseConf.IgnoreFile {
+			this.ignoreRegs = append(this.ignoreRegs, regexp.MustCompile(ignoreFile))
+		}
+	}
+	if this.workers == nil {
+		worker := 2
+		if config.Conf.BaseConf.Worker > 0 {
+			worker = config.Conf.BaseConf.Worker
+		}
+		this.workers = gorun.NewGoRun(worker, time.Minute*10, true)
+	}
+
+	return nil
+}
+
+// 移动文件
 func (this *checkImages) moveFile(file *fileutil.File, targetDir string) error {
 	if len(targetDir) == 0 {
 		return errors.New("Empty targetDir")
@@ -118,17 +103,59 @@ func (this *checkImages) moveFile(file *fileutil.File, targetDir string) error {
 		newName = fmt.Sprintf("%s_%v%s", newName[:idx], time.Now().Unix(), newName[idx:])
 	}
 
-	if targetDir != config.Conf.AuditConf.FailDir {
-		return this.moveFile(file, config.Conf.AuditConf.FailDir)
-	}
 	return errors.New("move file fail!!!")
 }
 
-func (this *checkImages) classify(file *fileutil.File, resp *baiduaudit.CheckImageResp) error {
-	// 不检测
-	if resp == nil {
-		return this.moveFile(file, config.Conf.AuditConf.NoCheck)
+func (this *checkImages) doFileClassify(file *fileutil.File, wg *sync.WaitGroup) {
+	defer wg.Done()
+	isIgnore := false
+	var err error
+	for _, reg := range this.ignoreRegs {
+		isIgnore = reg.MatchString(file.Name)
+		if isIgnore {
+			break
+		}
 	}
+	if isIgnore {
+		return
+	}
+	tp := this.getFileType(file)
+	switch true {
+	case arrayutil.InArrayForString(config.Conf.BaseConf.GifType, strings.ToLower(tp)) > -1:
+		err = this.classifyGif(file)
+	case arrayutil.InArrayForString(config.Conf.BaseConf.VideoType, strings.ToLower(tp)) > -1:
+		err = this.classifyVideo(file)
+	case arrayutil.InArrayForString(config.Conf.BaseConf.FileType, strings.ToLower(tp)) > -1:
+		err = this.classifyImg(file)
+	default:
+		err = this.classifyDefault(file)
+	}
+	if err != nil {
+		logrus.WithError(err).WithFields(logrus.Fields{"file_type": strings.ToLower(tp), "file_path": file.Path}).Error("failed to classify image")
+		this.classifyFail(file)
+		return
+	}
+}
+
+func (this *checkImages) classifyGif(file *fileutil.File) error {
+	return this.moveFile(file, config.Conf.AuditConf.Gif)
+}
+
+func (this *checkImages) classifyVideo(file *fileutil.File) error {
+	return this.moveFile(file, config.Conf.AuditConf.Mp4)
+}
+
+func (this *checkImages) classifyImg(file *fileutil.File) error {
+	resp, err := this.baiduClient.CheckImages(file.Path)
+	if err != nil {
+		logrus.WithError(err).Error("failed to check image")
+		return err
+	}
+	if resp.ErrorCode > 0 {
+		logrus.WithField("resp", resp).Error("check image resp has error")
+		return errors.New(resp.ErrorMsg)
+	}
+
 	// 普通图片
 	if resp.ConclusionType == 1 {
 		return this.moveFile(file, config.Conf.AuditConf.NoH)
@@ -179,16 +206,26 @@ func (this *checkImages) classify(file *fileutil.File, resp *baiduaudit.CheckIma
 			case 17: // 裆部特写
 				dir = config.Conf.AuditConf.CrotchH
 			default: // 其他类型
-				dir = config.Conf.AuditConf.FailDir
+				dir = config.Conf.AuditConf.Other
 			}
 
 			return this.moveFile(file, path.Join(dir, this.getScore(item.Probability)))
 		}
 	}
 
+	errMsg, _ := json.Marshal(resp)
+	return fmt.Errorf("audit fail, %s", string(errMsg))
+}
+
+func (this *checkImages) classifyDefault(file *fileutil.File) error {
+	return this.moveFile(file, config.Conf.AuditConf.NoCheck)
+}
+
+func (this *checkImages) classifyFail(file *fileutil.File) error {
 	return this.moveFile(file, config.Conf.AuditConf.FailDir)
 }
 
+// 获取百度接口分数
 func (this *checkImages) getScore(probability float64) string {
 	p := probability * 100
 	if p >= 0 && p < 20 {
@@ -205,6 +242,7 @@ func (this *checkImages) getScore(probability float64) string {
 	return "0"
 }
 
+// 获取文件类型
 func (this *checkImages) getFileType(file *fileutil.File) string {
 	idx := strings.LastIndex(file.Path, ".")
 	if idx == -1 || idx+1 >= len(file.Path) {
