@@ -4,7 +4,7 @@ go 1.17
 
 require (
 	github.com/sayuri567/gorun v0.5.0
-	github.com/sayuri567/tool v0.6.0
+	github.com/sayuri567/tool v0.7.0
 	github.com/sirupsen/logrus v1.8.1
 	gopkg.in/yaml.v2 v2.4.0
 )

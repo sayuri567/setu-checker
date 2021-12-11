@@ -20,6 +20,7 @@ type BaseConf struct {
 	BaiduSk    string   `yaml:"baidu_sk"`
 	FileType   []string `yaml:"file_type"`
 	IgnoreFile []string `yaml:"ignore_file"`
+	IgnoreDir  []string `yaml:"ignore_dir"`
 	VideoType  []string `yaml:"video_type"`
 	GifType    []string `yaml:"gif_type"`
 }

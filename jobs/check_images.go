@@ -51,7 +51,7 @@ func (this *checkImages) Run() {
 
 	statisticsMap := map[string]*statisticsData{}
 	for _, imagePath := range config.Conf.BaseConf.Paths {
-		files, err := fileutil.GetAllFiles(imagePath)
+		files, err := fileutil.GetAllFiles(imagePath, config.Conf.BaseConf.IgnoreDir...)
 		if err != nil {
 			logrus.WithError(err).Error("failed to get all files")
 			continue
