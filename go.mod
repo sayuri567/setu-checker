@@ -3,6 +3,7 @@ module github.com/sayuri567/setu-checker
 go 1.17
 
 require (
+	github.com/jlaffaye/ftp v0.0.0-20211117213618-11820403398b
 	github.com/sayuri567/gorun v0.5.0
 	github.com/sayuri567/tool v0.7.0
 	github.com/sirupsen/logrus v1.8.1

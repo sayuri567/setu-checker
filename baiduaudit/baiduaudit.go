@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"io/ioutil"
 	"net/url"
 	"sync"
 	"time"
@@ -83,12 +82,8 @@ func (l CheckImageDataItemList) Swap(i, j int) {
 	l[i], l[j] = l[j], l[i]
 }
 
-func (this *Client) CheckImages(filepath string) (*CheckImageResp, error) {
-	buff, err := ioutil.ReadFile(filepath)
-	if err != nil {
-		return nil, err
-	}
-	base64String := base64.StdEncoding.EncodeToString(buff)
+func (this *Client) CheckImages(content []byte) (*CheckImageResp, error) {
+	base64String := base64.StdEncoding.EncodeToString(content)
 	params := url.Values{
 		"image": []string{base64String},
 	}

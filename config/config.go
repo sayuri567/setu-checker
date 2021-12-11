@@ -11,10 +11,12 @@ import (
 type Config struct {
 	BaseConf  BaseConf  `yaml:"base_conf"`
 	AuditConf AuditConf `yaml:"audit_conf"`
+	FtpConf   FtpConf   `yaml:"ftp_conf"`
 }
 
 type BaseConf struct {
 	Worker     int      `yaml:"worker"`
+	SourceType string   `yaml:"source_type"`
 	Paths      []string `yaml:"paths"`
 	BaiduAk    string   `yaml:"baidu_ak"`
 	BaiduSk    string   `yaml:"baidu_sk"`
@@ -23,6 +25,12 @@ type BaseConf struct {
 	IgnoreDir  []string `yaml:"ignore_dir"`
 	VideoType  []string `yaml:"video_type"`
 	GifType    []string `yaml:"gif_type"`
+}
+
+type FtpConf struct {
+	Address  string `yaml:"address"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
 }
 
 type AuditConf struct {

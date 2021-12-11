@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
 	"path"
 	"regexp"
 	"sort"
@@ -17,6 +15,7 @@ import (
 	"github.com/sayuri567/gorun"
 	"github.com/sayuri567/setu-checker/baiduaudit"
 	"github.com/sayuri567/setu-checker/config"
+	"github.com/sayuri567/setu-checker/filesource"
 	"github.com/sayuri567/tool/util/arrayutil"
 	"github.com/sayuri567/tool/util/fileutil"
 	"github.com/sirupsen/logrus"
@@ -26,6 +25,7 @@ type checkImages struct {
 	baiduClient *baiduaudit.Client
 	ignoreRegs  []*regexp.Regexp
 	workers     *gorun.GoRun
+	source      filesource.FileSource
 }
 
 type statisticsData struct {
@@ -48,10 +48,14 @@ func (this *checkImages) Run() {
 		return
 	}
 	wg := &sync.WaitGroup{}
-
+	this.source = filesource.GetSource(config.Conf.BaseConf.SourceType)
+	if this.source == nil {
+		logrus.Errorf("Invalid SourceType: %s", config.Conf.BaseConf.SourceType)
+		return
+	}
 	statisticsMap := map[string]*statisticsData{}
 	for _, imagePath := range config.Conf.BaseConf.Paths {
-		files, err := fileutil.GetAllFiles(imagePath, config.Conf.BaseConf.IgnoreDir...)
+		files, err := this.source.GetAllFiles(imagePath, config.Conf.BaseConf.IgnoreDir...)
 		if err != nil {
 			logrus.WithError(err).Error("failed to get all files")
 			continue
@@ -95,36 +99,7 @@ func (this *checkImages) init() error {
 
 // 移动文件
 func (this *checkImages) moveFile(file *fileutil.File, targetDir string) error {
-	if len(targetDir) == 0 {
-		return errors.New("Empty targetDir")
-	}
-	dirInfo, err := os.Stat(targetDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			err = fileutil.MakeDir(targetDir)
-			if err != nil {
-				return err
-			}
-		} else {
-			return err
-		}
-	}
-	if dirInfo != nil && !dirInfo.IsDir() {
-		return fmt.Errorf("targetDir is not dir: %s", targetDir)
-	}
-	newName := path.Join(targetDir, file.Name)
-
-	for i := 0; i < 3; i++ {
-		if _, err := os.Stat(newName); err != nil && os.IsNotExist(err) {
-			cmd := exec.Command("mv", file.Path, newName)
-			_, err = cmd.Output()
-			return err
-		}
-		idx := strings.LastIndex(newName, ".")
-		newName = fmt.Sprintf("%s_%v%s", newName[:idx], time.Now().Unix(), newName[idx:])
-	}
-
-	return errors.New("move file fail!!!")
+	return this.source.MoveFile(file, targetDir)
 }
 
 func (this *checkImages) doFileClassify(file *fileutil.File, wg *sync.WaitGroup, statistics *statisticsData) {
@@ -173,7 +148,12 @@ func (this *checkImages) classifyVideo(file *fileutil.File) error {
 }
 
 func (this *checkImages) classifyImg(file *fileutil.File) error {
-	resp, err := this.baiduClient.CheckImages(file.Path)
+	fileContent, err := this.source.GetFile(file)
+	if err != nil {
+		logrus.WithError(err).Error("failed to get file content")
+		return err
+	}
+	resp, err := this.baiduClient.CheckImages(fileContent)
 	if err != nil {
 		logrus.WithError(err).Error("failed to check image")
 		return err
