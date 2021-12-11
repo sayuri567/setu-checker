@@ -1,6 +1,9 @@
 package manager
 
 import (
+	"fmt"
+
+	"github.com/sayuri567/setu-checker/config"
 	"github.com/sayuri567/setu-checker/constants"
 	"github.com/sayuri567/setu-checker/jobs"
 	"github.com/sayuri567/tool/module"
@@ -32,7 +35,11 @@ func (m *ModuleManager) Init() error {
 }
 
 func (m *ModuleManager) getCron() []*crontab.Crontab {
+	interval := 12
+	if config.Conf.BaseConf.Interval > 0 {
+		interval = config.Conf.BaseConf.Interval
+	}
 	return []*crontab.Crontab{
-		{Spec: "36 */12 * * * ?", Cmd: jobs.CheckImages},
+		{Spec: fmt.Sprintf("36 */%v * * * ?", interval), Cmd: jobs.CheckImages},
 	}
 }

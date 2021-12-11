@@ -16,6 +16,7 @@ type Config struct {
 
 type BaseConf struct {
 	Worker     int      `yaml:"worker"`
+	Interval   int      `yaml:"interval"`
 	SourceType string   `yaml:"source_type"`
 	Paths      []string `yaml:"paths"`
 	BaiduAk    string   `yaml:"baidu_ak"`

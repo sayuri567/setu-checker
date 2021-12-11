@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jlaffaye/ftp"
@@ -17,7 +18,13 @@ import (
 const SOURCE_FTP = "FTP"
 
 type FTPSource struct {
-	conn *ftp.ServerConn
+	conns []*ftpConn
+	lock  sync.Mutex
+}
+
+type ftpConn struct {
+	conn  *ftp.ServerConn
+	using bool
 }
 
 func init() {
@@ -25,10 +32,12 @@ func init() {
 }
 
 func (this *FTPSource) GetAllFiles(dirPath string, ignoreDirName ...string) (fileutil.Files, error) {
-	if err := this.checkConn(); err != nil {
+	conn, err := this.getConn()
+	if err != nil {
 		return nil, err
 	}
-	entrys, err := this.conn.List(dirPath)
+	defer conn.Close()
+	entrys, err := conn.conn.List(dirPath)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +67,12 @@ func (this *FTPSource) GetAllFiles(dirPath string, ignoreDirName ...string) (fil
 }
 
 func (this *FTPSource) GetFile(file *fileutil.File) ([]byte, error) {
-	resp, err := this.conn.Retr(file.Path)
+	conn, err := this.getConn()
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	resp, err := conn.conn.Retr(file.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -67,31 +81,33 @@ func (this *FTPSource) GetFile(file *fileutil.File) ([]byte, error) {
 }
 
 func (this *FTPSource) MoveFile(file *fileutil.File, targetDir string) error {
-	if err := this.checkConn(); err != nil {
+	conn, err := this.getConn()
+	if err != nil {
 		return err
 	}
+	defer conn.Close()
 
 	if len(targetDir) == 0 {
 		return errors.New("Empty targetDir")
 	}
 
-	err := this.conn.ChangeDir(targetDir)
+	err = conn.conn.ChangeDir(targetDir)
 	if err != nil {
-		t, _ := this.conn.GetTime(targetDir)
+		t, _ := conn.conn.GetTime(targetDir)
 		if !t.IsZero() {
 			return fmt.Errorf("targetDir is not dir: %s", targetDir)
 		}
-		err = this.conn.MakeDir(targetDir)
+		err = conn.conn.MakeDir(targetDir)
 		if err != nil {
 			return err
 		}
 	}
-	this.conn.ChangeDir("/")
+	conn.conn.ChangeDir("/")
 
 	newName := path.Join(targetDir, file.Name)
 
 	for i := 0; i < 3; i++ {
-		size, _ := this.conn.FileSize(newName)
+		size, _ := conn.conn.FileSize(newName)
 		if size > 0 {
 			idx := strings.LastIndex(newName, ".")
 			newName = fmt.Sprintf("%s_%v%s", newName[:idx], time.Now().Unix(), newName[idx:])
@@ -99,22 +115,39 @@ func (this *FTPSource) MoveFile(file *fileutil.File, targetDir string) error {
 		}
 		break
 	}
-	return this.conn.Rename(file.Path, newName)
+	return conn.conn.Rename(file.Path, newName)
 }
 
-func (this *FTPSource) checkConn() error {
-	var err error
-	if this.conn != nil {
-		err = this.conn.NoOp()
-		if err == nil {
-			return nil
+func (this *FTPSource) getConn() (*ftpConn, error) {
+	this.lock.Lock()
+	defer this.lock.Unlock()
+	for idx, conn := range this.conns {
+		if conn.using {
+			continue
 		}
+		if err := conn.conn.NoOp(); err != nil {
+			this.conns = append(this.conns[:idx], this.conns[idx+1:]...)
+			conn.conn.Quit()
+			continue
+		}
+		conn.using = true
+		return conn, nil
 	}
 
-	this.conn, err = ftp.Dial(config.Conf.FtpConf.Address, ftp.DialWithTimeout(time.Second*5))
+	conn, err := ftp.Dial(config.Conf.FtpConf.Address)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	err = conn.Login(config.Conf.FtpConf.Username, config.Conf.FtpConf.Password)
+	if err != nil {
+		return nil, err
 	}
 
-	return this.conn.Login(config.Conf.FtpConf.Username, config.Conf.FtpConf.Password)
+	c := &ftpConn{conn: conn, using: true}
+	this.conns = append(this.conns, c)
+	return c, nil
+}
+
+func (this *ftpConn) Close() {
+	this.using = false
 }
