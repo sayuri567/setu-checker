@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"path"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/jlaffaye/ftp"
@@ -16,19 +15,23 @@ import (
 )
 
 const SOURCE_FTP = "FTP"
+const maxConn = 5
 
 type FTPSource struct {
-	conns []*ftpConn
-	lock  sync.Mutex
+	conns chan *ftpConn
 }
 
 type ftpConn struct {
-	conn  *ftp.ServerConn
-	using bool
+	conn   *ftp.ServerConn
+	source *FTPSource
 }
 
 func init() {
-	RegisterSource(SOURCE_FTP, &FTPSource{})
+	source := &FTPSource{conns: make(chan *ftpConn, maxConn)}
+	for i := 0; i < maxConn; i++ {
+		source.conns <- &ftpConn{}
+	}
+	RegisterSource(SOURCE_FTP, source)
 }
 
 func (this *FTPSource) GetAllFiles(dirPath string, ignoreDirName ...string) (fileutil.Files, error) {
@@ -119,21 +122,24 @@ func (this *FTPSource) MoveFile(file *fileutil.File, targetDir string) error {
 }
 
 func (this *FTPSource) getConn() (*ftpConn, error) {
-	this.lock.Lock()
-	defer this.lock.Unlock()
-	for idx, conn := range this.conns {
-		if conn.using {
-			continue
-		}
-		if err := conn.conn.NoOp(); err != nil {
-			this.conns = append(this.conns[:idx], this.conns[idx+1:]...)
-			conn.conn.Quit()
-			continue
-		}
-		conn.using = true
-		return conn, nil
+	conn := <-this.conns
+	var err error
+	if conn.conn == nil {
+		conn, err = this.createConn()
+	}
+	if err = conn.conn.NoOp(); err != nil {
+		conn.conn.Quit()
+		conn, err = this.createConn()
+	}
+	if err != nil {
+		this.conns <- conn
+		return nil, err
 	}
 
+	return conn, nil
+}
+
+func (this *FTPSource) createConn() (*ftpConn, error) {
 	conn, err := ftp.Dial(config.Conf.FtpConf.Address)
 	if err != nil {
 		return nil, err
@@ -143,11 +149,9 @@ func (this *FTPSource) getConn() (*ftpConn, error) {
 		return nil, err
 	}
 
-	c := &ftpConn{conn: conn, using: true}
-	this.conns = append(this.conns, c)
-	return c, nil
+	return &ftpConn{conn: conn, source: this}, nil
 }
 
 func (this *ftpConn) Close() {
-	this.using = false
+	this.source.conns <- this
 }
